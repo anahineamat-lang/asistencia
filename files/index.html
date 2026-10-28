@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asistencia por geolocalización</title>
+<style>
+  :root{
+    --bg:#f3f6f4; --card:#ffffff; --ink:#16251f; --muted:#5d6f66;
+    --brand:#0f6b4f; --brand-ink:#ffffff; --line:#d9e3de;
+    --ok:#1b7f4b; --err:#b3261e; --warn:#a15c00;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45;min-height:100vh}
+  .hidden{display:none!important}
+  header{background:var(--brand);color:var(--brand-ink);padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
+  header h1{font-size:1.05rem;font-weight:650}
+  header button{background:transparent;border:1px solid #ffffff88;color:#fff;border-radius:8px;padding:6px 12px;font-size:.85rem}
+  main{max-width:720px;margin:0 auto;padding:16px;display:grid;gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  h2{font-size:1.05rem;margin-bottom:10px}
+  p.hint{color:var(--muted);font-size:.9rem;margin-bottom:10px}
+  label{display:block;font-size:.85rem;color:var(--muted);margin:10px 0 4px}
+  input,select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:1rem;background:#fff;color:var(--ink)}
+  input:focus,select:focus,button:focus-visible{outline:3px solid #0f6b4f55;outline-offset:1px}
+  button{font:inherit;cursor:pointer}
+  .btn{width:100%;margin-top:12px;padding:13px;border:0;border-radius:10px;background:var(--brand);color:var(--brand-ink);font-weight:600}
+  .btn.alt{background:#e4efe9;color:var(--brand)}
+  .btn:disabled{opacity:.6;cursor:wait}
+  .msg{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:.92rem;background:#eef3f0}
+  .msg.ok{background:#e1f4e9;color:var(--ok)} .msg.err{background:#fbe7e5;color:var(--err)} .msg.warn{background:#fff1d9;color:var(--warn)}
+  .login-wrap{max-width:420px;margin:8vh auto 0;padding:16px}
+  .login-wrap h1{font-size:1.5rem;margin-bottom:4px}
+  .big{width:100%;min-height:190px;border-radius:50%;max-width:230px;aspect-ratio:1;margin:8px auto;display:block;border:0;background:var(--brand);color:#fff;font-size:1.3rem;font-weight:700;box-shadow:0 0 0 10px #0f6b4f22}
+  .big:disabled{opacity:.6}
+  .qr-box{display:flex;flex-direction:column;align-items:center;gap:10px}
+  canvas#qr{width:190px;height:190px;image-rendering:pixelated;border:1px solid var(--line);border-radius:8px}
+  .link{word-break:break-all;font-size:.82rem;background:#eef3f0;border-radius:8px;padding:8px;width:100%}
+  .charts{display:grid;gap:16px}
+  .chart-h{position:relative;height:230px}
+  @media(min-width:640px){.charts{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+
+<!-- ========== VISTA 1: LOGIN ========== -->
+<section id="view-login" class="login-wrap">
+  <h1>Asistencia en el aula</h1>
+  <p class="hint">Ingresá con tu usuario y elegí tu rol.</p>
+  <div class="card">
+    <label for="username">Usuario</label>
+    <input id="username" autocomplete="username" placeholder="ej: alumno1">
+    <label for="rol">Rol</label>
+    <select id="rol">
+      <option value="estudiante">Estudiante</option>
+      <option value="profesor">Profesor</option>
+    </select>
+    <button class="btn" id="btn-login">Ingresar</button>
+    <div id="login-msg" class="msg hidden"></div>
+  </div>
+</section>
+
+<!-- ========== VISTA 2: PROFESOR ========== -->
+<section id="view-profesor" class="hidden">
+  <header><h1 id="prof-title">Panel del profesor</h1><button class="logout">Salir</button></header>
+  <main>
+    <div class="card">
+      <h2>Mi aula</h2>
+      <label for="curso-select">Curso</label>
+      <select id="curso-select"></select>
+      <button class="btn" id="btn-fijar">Fijar ubicación actual del aula</button>
+      <div id="coords-msg" class="msg">Sin ubicación fijada.</div>
+    </div>
+
+    <div class="card">
+      <h2>QR / link de la clase</h2>
+      <p class="hint">Simulación: el QR es ilustrativo. Compartí el link con los alumnos.</p>
+      <div class="qr-box">
+        <canvas id="qr" width="21" height="21"></canvas>
+        <div class="link" id="class-link">-</div>
+        <button class="btn alt" id="btn-copy">Copiar link</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Analítica (datos simulados)</h2>
+      <div class="charts">
+        <div><div class="chart-h"><canvas id="chart-meses"></canvas></div></div>
+        <div><div class="chart-h"><canvas id="chart-ranking"></canvas></div></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- ========== VISTA 3: ESTUDIANTE ========== -->
+<section id="view-estudiante" class="hidden">
+  <header><h1 id="est-title">Mi asistencia</h1><button class="logout">Salir</button></header>
+  <main>
+    <div class="card" style="text-align:center">
+      <label for="codigo" style="text-align:left">Código del curso</label>
+      <input id="codigo" placeholder="ej: MAT1A" autocapitalize="characters">
+      <button class="big" id="btn-asistencia">Registrar asistencia</button>
+      <div id="est-msg" class="msg hidden" style="text-align:left"></div>
+    </div>
+  </main>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+/* ========== 1. SUPABASE: pegá tus credenciales acá ========== */
+const SUPABASE_URL = 'https://knahkpaouogwgwuwskif.supabase.co/rest/v1/';
+const SUPABASE_ANON_KEY = 'sb_publishable_26HjRko1kBSkXBD3hnnkfA_lKAihLd7';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ========== Estado y utilidades ========== */
+const RADIO_MAX_M = 30;
+let user = null;        // {id, username, nombre, rol}
+let cursos = [];        // cursos del profesor
+const $ = id => document.getElementById(id);
+
+function show(view){
+  ['login','profesor','estudiante'].forEach(v => $('view-'+v).classList.toggle('hidden', v !== view));
+}
+function msg(el, text, type){
+  el.textContent = text;
+  el.className = 'msg ' + (type || '');
+}
+function getPosition(){
+  return new Promise((resolve, reject) => {
+    if(!navigator.geolocation) return reject(new Error('Tu navegador no soporta geolocalización.'));
+    navigator.geolocation.getCurrentPosition(resolve, err => {
+      const m = {1:'Permiso de ubicación denegado. Activalo en los ajustes del navegador.',
+                 2:'No se pudo determinar tu ubicación.', 3:'Se agotó el tiempo para obtener la ubicación.'};
+      reject(new Error(m[err.code] || 'Error de geolocalización.'));
+    }, {enableHighAccuracy:true, timeout:15000, maximumAge:0});
+  });
+}
+/* Fórmula de Haversine: distancia en metros entre dos coordenadas */
+function haversine(lat1, lon1, lat2, lon2){
+  const R = 6371000, rad = d => d * Math.PI / 180;
+  const dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/* ========== 2a. LOGIN ========== */
+$('btn-login').onclick = async () => {
+  const username = $('username').value.trim().toLowerCase();
+  const rol = $('rol').value;
+  const out = $('login-msg');
+  if(!username) return msg(out, 'Escribí tu usuario.', 'err');
+  out.className = 'msg hidden';
+  try{
+    let { data, error } = await db.from('usuarios').select('*').eq('username', username).maybeSingle();
+    if(error) throw error;
+    if(!data){ // Prototipo: si no existe, se registra automáticamente
+      const ins = await db.from('usuarios').insert({username, nombre: username, rol}).select().single();
+      if(ins.error) throw ins.error;
+      data = ins.data;
+    }
+    if(data.rol !== rol) return msg(out, `Ese usuario es de rol "${data.rol}".`, 'err');
+    user = data;
+    sessionStorage.setItem('user', JSON.stringify(user));
+    enter();
+  }catch(e){ msg(out, 'Error: ' + e.message, 'err'); }
+};
+
+function enter(){
+  if(user.rol === 'profesor'){ show('profesor'); initProfesor(); }
+  else { show('estudiante'); initEstudiante(); }
+}
+document.querySelectorAll('.logout').forEach(b => b.onclick = () => {
+  sessionStorage.removeItem('user'); user = null; show('login');
+});
+
+/* ========== 2b. VISTA PROFESOR ========== */
+async function initProfesor(){
+  $('prof-title').textContent = 'Profe ' + user.nombre;
+  let { data, error } = await db.from('cursos').select('*').eq('profesor_id', user.id).order('creado_en');
+  if(error) return msg($('coords-msg'), 'Error: ' + error.message, 'err');
+  if(!data.length){ // crea un curso inicial
+    const codigo = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const ins = await db.from('cursos').insert({nombre:'Mi aula', profesor_id:user.id, codigo}).select();
+    if(ins.error) return msg($('coords-msg'), 'Error: ' + ins.error.message, 'err');
+    data = ins.data;
+  }
+  cursos = data;
+  $('curso-select').innerHTML = '';
+  cursos.forEach(c => $('curso-select').add(new Option(`${c.nombre} (${c.codigo})`, c.id)));
+  refreshCurso();
+  renderCharts();
+}
+const cursoActual = () => cursos.find(c => c.id === $('curso-select').value);
+$('curso-select').onchange = refreshCurso;
+
+function refreshCurso(){
+  const c = cursoActual(); if(!c) return;
+  if(c.latitud != null) msg($('coords-msg'), `Ubicación fijada: ${(+c.latitud).toFixed(5)}, ${(+c.longitud).toFixed(5)}`, 'ok');
+  else msg($('coords-msg'), 'Sin ubicación fijada. Pulsá el botón dentro del aula.', 'warn');
+  const link = location.href.split('?')[0].split('#')[0] + '?curso=' + c.codigo;
+  $('class-link').textContent = link;
+  drawFakeQR(link);
+}
+$('btn-fijar').onclick = async () => {
+  const c = cursoActual(), btn = $('btn-fijar'), out = $('coords-msg');
+  btn.disabled = true; msg(out, 'Obteniendo ubicación…');
+  try{
+    const pos = await getPosition();
+    const { latitude, longitude } = pos.coords;
+    const { error } = await db.from('cursos').update({latitud:latitude, longitud:longitude}).eq('id', c.id);
+    if(error) throw error;
+    c.latitud = latitude; c.longitud = longitude;
+    refreshCurso();
+  }catch(e){ msg(out, e.message, 'err'); }
+  btn.disabled = false;
+};
+$('btn-copy').onclick = async () => {
+  try{ await navigator.clipboard.writeText($('class-link').textContent); $('btn-copy').textContent = 'Link copiado'; }
+  catch{ $('btn-copy').textContent = 'Copialo manualmente'; }
+  setTimeout(() => $('btn-copy').textContent = 'Copiar link', 2000);
+};
+
+/* QR simulado: patrón determinista a partir del link (NO es un QR escaneable) */
+function drawFakeQR(text){
+  const cv = $('qr'), ctx = cv.getContext('2d'), N = 21;
+  let h = 2166136261; for(const ch of text){ h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  const rnd = () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return (h >>> 0) / 4294967296; };
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, N, N); ctx.fillStyle = '#16251f';
+  const inFinder = (x, y) => (x < 8 && y < 8) || (x > N-9 && y < 8) || (x < 8 && y > N-9);
+  for(let y = 0; y < N; y++) for(let x = 0; x < N; x++)
+    if(!inFinder(x, y) && rnd() > .5) ctx.fillRect(x, y, 1, 1);
+  [[0,0],[N-7,0],[0,N-7]].forEach(([ox, oy]) => {
+    ctx.fillRect(ox, oy, 7, 7); ctx.fillStyle = '#fff'; ctx.fillRect(ox+1, oy+1, 5, 5);
+    ctx.fillStyle = '#16251f'; ctx.fillRect(ox+2, oy+2, 3, 3);
+  });
+}
+
+/* Analítica simulada con Chart.js */
+let chartM, chartR;
+function renderCharts(){
+  chartM && chartM.destroy(); chartR && chartR.destroy();
+  chartM = new Chart($('chart-meses'), {
+    type: 'line',
+    data: { labels:['Mar','Abr','May','Jun','Jul','Ago','Sep','Oct'],
+      datasets:[{ label:'Asistencia (%)', data:[92,88,85,90,78,84,89,91], borderColor:'#0f6b4f',
+                  backgroundColor:'#0f6b4f22', fill:true, tension:.3 }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ title:{display:true, text:'Asistencia por mes'} }, scales:{ y:{min:50, max:100} } }
+  });
+  chartR = new Chart($('chart-ranking'), {
+    type: 'bar',
+    data: { labels:['García','Pérez','Rossi','Díaz','López'],
+      datasets:[{ label:'Asistencia (%)', data:[96,93,90,87,82], backgroundColor:'#0f6b4f' }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ title:{display:true, text:'Ranking de asistencia por profesor'}, legend:{display:false} },
+      scales:{ x:{min:50, max:100} } }
+  });
+}
+
+/* ========== 2c. VISTA ESTUDIANTE ========== */
+function initEstudiante(){
+  $('est-title').textContent = 'Hola, ' + user.nombre;
+  const p = new URLSearchParams(location.search).get('curso');
+  if(p) $('codigo').value = p.toUpperCase();
+}
+$('btn-asistencia').onclick = async () => {
+  const btn = $('btn-asistencia'), out = $('est-msg');
+  const codigo = $('codigo').value.trim().toUpperCase();
+  if(!codigo) return msg(out, 'Ingresá el código del curso.', 'err');
+  btn.disabled = true; msg(out, 'Verificando ubicación…');
+  try{
+    const { data: curso, error } = await db.from('cursos').select('*').eq('codigo', codigo).maybeSingle();
+    if(error) throw error;
+    if(!curso) throw new Error('No existe un curso con ese código.');
+    if(curso.latitud == null) throw new Error('El profesor todavía no fijó la ubicación del aula.');
+
+    const pos = await getPosition();
+    const { latitude, longitude } = pos.coords;
+    const dist = haversine(latitude, longitude, +curso.latitud, +curso.longitud);
+
+    if(dist > RADIO_MAX_M)
+      throw new Error(`Estás a ${Math.round(dist)} m del aula. Acercate a menos de ${RADIO_MAX_M} m.`);
+
+    const ins = await db.from('asistencias').insert({
+      curso_id: curso.id, estudiante_id: user.id, estado: 'Presente',
+      latitud: latitude, longitud: longitude, distancia_m: Math.round(dist * 10) / 10
+    });
+    if(ins.error){
+      if(ins.error.code === '23505') return msg(out, 'Ya registraste tu asistencia hoy en este curso.', 'warn');
+      throw ins.error;
+    }
+    msg(out, `¡Presente! Registrado a ${Math.round(dist)} m del aula.`, 'ok');
+  }catch(e){ msg(out, e.message, 'err'); }
+  btn.disabled = false;
+};
+
+/* ========== Restaurar sesión ========== */
+try{ const s = sessionStorage.getItem('user'); if(s){ user = JSON.parse(s); enter(); } }catch{}
+</script>
+</body>
+</html>
